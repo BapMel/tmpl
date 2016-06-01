@@ -1,12 +1,17 @@
 #!/usr/bin/perl -w
 
-# TODO est-ce que ça fonctionne avec des programmes en latin1 ?
-
-# TODO mettre ça sur Sourceforge, si d'autres veulent ajouter des
-# fonctionnalités.
-
-# TODO par défaut, START = première ligne si absent du programme ; et
+# TODO: par défaut, START = première ligne si absent du programme ; et
 # tout newstate inexistant vaut STOP
+
+# TODO: permettre les tables simplifiées (pour la version 2.0) : 
+# state: { <0 >1 ->2 :foo
+#          <1 >0 <-2 :bar}
+# state2: { <0 >1 ->2 
+#           <1 >0 <-2 } :state3
+# state3: <{01} >1 ->  :state4
+
+# TODO: autoriser les définitions de fonctions, puis leur appel
+
 
 ################################################################
 # Quelques réglages généraux
@@ -15,25 +20,10 @@
 # Le numéro de version.
 my $version = "1.0";
 
-# TODO vérifier que vraiment TOUT caractère puisse être imprimé par tmpl
-
 my $input;
-
-# TODO permettre les tables simplifiées (pour la version 2.0) : 
-# state: { <0 >1 ->2 :foo
-#          <1 >0 <-2 :bar}
-# state2: { <0 >1 ->2 
-#           <1 >0 <-2 } :state3
-# state3: <{01} >1 ->  :state4
 
 my $bout_ligne;
 my $fichier;
-
-# TODO autoriser les définitions de fonctions, puis leur appel
-
-# TODO boucle avec le point-virgule comme séparateur (utile pour créer
-# une machine universelle écrivant un programme sur un ruban
-# unidimensionnel)
 
 # Mode maniaque.
 use strict;
@@ -42,8 +32,6 @@ use strict;
 use utf8;
 binmode STDOUT, ":utf8";
 #binmode STDERR, ":utf8";
-
-# TODO vérifier les caractères accentués : éèçà°£µù§¨
 
 # Autoriser les programmes avec récursion infinie (machine sans arrêt).
 no warnings "recursion";
