@@ -1,0 +1,7 @@
+#!/home/meles/bin/tmpl
+
+START:			>1	->		:suivant
+suivant:		>0			:is_nb
+
+is_nb: 		< 0		<-		:is_nb
+is_nb:		< 1				:STOP

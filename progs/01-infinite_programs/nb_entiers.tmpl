@@ -1,0 +1,13 @@
+#!/home/bap/bin/tmpl 
+
+# Si je lis un 0, j'avance de 2 cases et écris 1.
+START:					:b
+b:		<0		->2		:b2
+b2: 		>1			:b	
+
+# Si je lis un 1, j'avance de deux cases et écris 0.
+b:		<1		->2		:b3
+b3:			>0			:b
+
+# Et si je ne lis rien du tout, alors j'écris 0.
+b:		<	>0			:b

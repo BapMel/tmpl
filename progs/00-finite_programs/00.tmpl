@@ -1,0 +1,9 @@
+#!/home/meles/bin/tmpl
+
+# Résultat attendu : 101
+# Permet de tester : le déplacement vers la gauche et la droite, la mise
+# en désordre des lignes du tableau.
+
+suivant2: 	>1 				:STOP
+suivant1: 	>1 		->2 	:suivant2
+START: 		>0 		<-	 	:suivant1

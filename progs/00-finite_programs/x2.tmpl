@@ -1,0 +1,16 @@
+#!/home/meles/bin/tmpl
+
+# Ecrit "101e" puis va à gauche
+
+START: 			>1	->1		:nb2
+nb2: 			>0	->1		:nb3
+nb3: 			>1	->1		:end_nb
+end_nb: 		>e	<-3		:is_nb
+
+# Va à droite jusqu'au "e", puis sors.
+
+is_nb:	<0			->1		:is_nb
+is_nb:	<1			->1		:is_nb
+is_nb: 	<e		>0			:STOP
+
+#end_nb: 		>0			:STOP

@@ -1,0 +1,14 @@
+#!/home/meles/bin/tmpl
+
+START: 	>H 	->1	:e
+e: 		>e 	->1	:l1
+l1: 	>l 	->1	:l2
+l2: 	>l 	->1	:o1
+o1: 	>o 	->1	:espace
+espace: 	->1 :w
+w: 		>w 	->1	:o2
+o2: 	>o 	->1	:r
+r:		>r	->1	:l3
+l3:		>l	->1	:d
+d:		>d	->1	:excl
+excl:	>!		:STOP

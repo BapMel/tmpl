@@ -1,0 +1,491 @@
+#!/usr/bin/perl -w
+
+# TODO est-ce que ça fonctionne avec des programmes en latin1 ?
+
+# TODO mettre ça sur Sourceforge, si d'autres veulent ajouter des
+# fonctionnalités.
+
+# TODO par défaut, START = première ligne si absent du programme ; et
+# tout newstate inexistant vaut STOP
+
+################################################################
+# Quelques réglages généraux
+################################################################
+
+# Le numéro de version.
+my $version = "1.0";
+
+# TODO vérifier que vraiment TOUT caractère puisse être imprimé par tmpl
+
+my $input;
+
+# TODO permettre les tables simplifiées (pour la version 2.0) : 
+# state: { <0 >1 ->2 :foo
+#          <1 >0 <-2 :bar}
+# state2: { <0 >1 ->2 
+#           <1 >0 <-2 } :state3
+# state3: <{01} >1 ->  :state4
+
+my $bout_ligne;
+my $fichier;
+
+# TODO autoriser les définitions de fonctions, puis leur appel
+
+# TODO boucle avec le point-virgule comme séparateur (utile pour créer
+# une machine universelle écrivant un programme sur un ruban
+# unidimensionnel)
+
+# Mode maniaque.
+use strict;
+
+# Lire et écrire en UTF-8.
+use utf8;
+binmode STDOUT, ":utf8";
+#binmode STDERR, ":utf8";
+
+# TODO vérifier les caractères accentués : éèçà°£µù§¨
+
+# Autoriser les programmes avec récursion infinie (machine sans arrêt).
+no warnings "recursion";
+
+# Déclaration de mes routines.
+sub help ();
+sub erreur ($;$$$);
+sub avert ($;$$$);
+sub ruban ($);
+sub deplacement ($);
+sub affiche_ruban ();
+sub prog_tableau ();
+sub lecture ($);
+sub exec_prog (;$);
+
+# Gestion des options.
+use Getopt::Std;
+my %options = ();
+getopts "d:ehl:ps:tvx", \%options;
+
+# Un "mot" est une suite, éventuellement vide, de caractères non blancs.
+my $mot = "(?:\\S*)";
+# Un caractère est soit un caractère normal, soit un vide, soit un
+# caractère précédé d'un antislash pour être protégé.
+my $caractere = "(?:|\\S|\\\\\\S)";
+
+# Variables utiles pour l'affichage du programme en tableau.
+my ($line_nr, $state, $read, $write, $goto, $newstate);
+
+
+################################################################
+# Aide
+################################################################
+
+sub help () {
+    print <<EOF;
+tmpl $version
+
+Interprète du langage TMPL (Turing Machine Programming Language).
+
+Syntaxe :
+    tmpl [-h|-v]
+    tmpl [-d secondes|-p|-s étapes|-t|-x] [prog1 prog2 ...]
+    tmpl [-e ligne d'instructions|-l chaine]
+
+Options
+    -d secondes   Nombre (entier ou décimal) de secondes entre deux 
+                  instructions 
+    -e ligne      Exécute une ligne d'instructions (donnée en entrée standard).
+    -h            Cette aide
+    -l chaîne     Produit un programme écrivant "chaîne".
+    -p            Attend que l'on appuie sur Entrée entre deux opérations
+    -s étapes     Nombre (entier) d'instructions à exécuter
+    -t            Affichage du programme sous forme de tableau
+    -x            Exécution eXplicite du programme (numéro de ligne)
+    -v            Version de tmpl
+EOF
+}
+
+
+################################################################
+# Gestion des erreurs et des avertissements
+################################################################
+
+sub erreur ($;$$$) {
+    my ($msg, $fichier, $ligne, $fragment) = @_;
+    my $err = "Erreur" 
+        . ($fichier ? " (\"$fichier\"" : "")
+        . ($ligne ? ":$ligne" : "")
+        . ($fragment ? ":$fragment" : "")
+        . ($fichier ? "\)" : "") 
+        . " : " . $msg . "\n";
+    warn $err;
+}
+
+sub avert ($;$$$) {
+    my ($msg, $fichier, $ligne, $fragment) = @_;
+    my $avert = "Attention" 
+        . ($fichier ? " (\"$fichier\"" : "")
+        . ($ligne ? ":$ligne" : "")
+        . ($fragment ? ":$fragment" : "")
+        . ($fichier ? "\)" : "") 
+        . " : " . $msg . "\n";
+    warn $avert;
+}
+
+
+################################################################
+# Gestion du ruban
+################################################################
+
+# Déclaration du ruban, qui est constitué d'une partie gauche (tableau
+# @ruban{'negatif'}, de 0 vers moins l'infini) et d'une partie droite
+# (tableau @ruban{'positif'}, de 0 vers plus l'infini). Voir la
+# documentation du langage TMPL pour plus d'informations techniques.
+my %ruban;
+
+# Tête de lecture
+my $tete;
+
+# Nombre d'étapes parcourues.
+my ($max_step, $step);
+
+# La table des instructions.
+my @table;
+
+# Délai d'attente entre deux opérations. Par défaut : 0 seconde.
+my $delai = 0;
+
+
+# Renvoie la variable correspondant à l'emplacement de la tête.
+sub ruban ($) {
+    if ($tete >= 0) { return \$ruban{'positif'}[$tete]; }
+    else { return \$ruban{'negatif'}[($tete * -1) - 1]; }
+}
+
+
+# Affiche le ruban.
+sub affiche_ruban () {
+# La gauche du ruban. On l'affiche à l'envers, de façon à ce que
+# l'infini soit tourné vers la gauche. Et seulement si le ruban négatif
+# est défini, ce qui n'est pas nécessairement le cas.
+    my $ruban_fini = "";
+
+    if ($ruban{'negatif'}) {
+        $ruban_fini = join("", (reverse @{$ruban{'negatif'}})); }
+
+# La droite du ruban. Ici l'infini est tourné sur la droite. Et le ruban
+# est toujours défini, car sa case 0 vaut " " au démarrage de la machine.
+    $ruban_fini .= join("", @{$ruban{'positif'}});
+
+# Aller à la ligne après avoir affiché tout le ruban ; sauf avec
+# l'option -p, car c'est l'utilisateur qui se charge de sauter les
+# lignes en tapant sur Entrée.
+    $ruban_fini .= "\n" unless $options{p};
+
+    print $ruban_fini;
+}
+
+
+sub deplacement ($) {
+    my ($offset) = @_;
+# Si notre déplacement dépasse le ruban à droite, on rajoute des cases vides.
+    push @{$ruban{'positif'}}, " "
+        while $offset > 0 
+        && $tete + $offset > $#{$ruban{'positif'}};
+
+# La même chose pour le ruban de gauche.
+    push @{$ruban{'negatif'}}, " "
+        while $offset < 0 
+        && $tete + $offset < $#{$ruban{'negatif'}} * -1 - 1;
+}
+
+
+################################################################
+# Affiche le programme sous forme de tableau.
+################################################################
+
+sub prog_tableau () {
+    print "Ligne     Commande  État            Lect.  Écr.  Dépl.   Nouvel état\n";
+    print "—" x 60 . "\n"; 
+    
+    for ($line_nr = 1; $line_nr <= $#table; $line_nr++) {
+
+        for ($bout_ligne = 1; $bout_ligne <= $#{$table[$line_nr]};
+             $bout_ligne++) {
+
+# Vérifier que ce soit une ligne de code (et non un commentaire).
+            if ($table[$line_nr][$bout_ligne]{'state'}) {
+
+                $state = $table[$line_nr][$bout_ligne]{'state'} ? 
+                    $table[$line_nr][$bout_ligne]{'state'} : "";
+                
+                $read = $table[$line_nr][$bout_ligne]{'read'} ?
+                    ($table[$line_nr][$bout_ligne]{'read'} eq " " ?  "\" \" " :
+                     $table[$line_nr][$bout_ligne]{'read'}) : "";
+                
+                $write = $table[$line_nr][$bout_ligne]{'write'} ?
+                    ($table[$line_nr][$bout_ligne]{'write'} eq " " ?
+                     "\" \" " : $table[$line_nr][$bout_ligne]{'write'})
+                    : "";
+                
+                $goto = $table[$line_nr][$bout_ligne]{'goto'} ?  
+                    $table[$line_nr][$bout_ligne]{'goto'} : "";
+
+                $newstate = $table[$line_nr][$bout_ligne]{'newstate'} ?
+                    $table[$line_nr][$bout_ligne]{'newstate'} : "";
+                
+                format STDOUT =
+@<<<<<<<< @<<<<<<<< @<<<<<<<<<<<<<< @<<<   @<<<  @<<     @<<<<<<<<<<<<<<<<
+$line_nr, $bout_ligne, $state,         $read,  $write, $goto,  $newstate
+.
+
+write;
+        }
+    }
+}
+}
+
+
+
+################################################################
+# Exécution d'une instruction désignée par son état.
+################################################################
+
+sub lecture ($) {
+    my ($ligne) = @_;
+
+# Sortir si on arrive à l'état STOP.
+    return if $ligne eq "STOP";
+    
+# Vérifier si la ligne existe.
+    for (my $l = 1; $l <= $#table; $l++) {
+        for ($bout_ligne = 0; $bout_ligne <= $#{$table[$l]}; $bout_ligne++) {
+            if ($table[$l][$bout_ligne]{'state'} 
+                && $table[$l][$bout_ligne]{'state'} eq $ligne 
+
+# Et que, si un caractère à lire est précisé, ce soit le bon.
+                && (!defined($table[$l][$bout_ligne]{'read'}) 
+                    || $table[$l][$bout_ligne]{'read'} eq ${ruban($tete)})) {
+
+# Si on a précisé un caractère à écrire, alors on l'écrit à
+# l'emplacement actuel du ruban.
+                ${ruban($tete)} = $table[$l][$bout_ligne]{'write'} 
+                if defined $table[$l][$bout_ligne]{'write'};
+
+# Si on a précisé un déplacement, alors on l'effectue.
+                if ($table[$l][$bout_ligne]{'goto'}) { 
+                    deplacement($table[$l][$bout_ligne]{'goto'});
+                    $tete += $table[$l][$bout_ligne]{'goto'};
+                }
+
+# Certaines options exigent d'afficher les étapes intermédiaires : -x,
+# -d, -p.
+                print "$step. ($l:$bout_ligne) " if $options{x};
+                affiche_ruban if $options{d} || $options{x} || $options{p};
+
+# Si on est arrivé au terme du nombre d'étapes spécifié par l'option -s,
+# on sort.
+                $step++;
+                return if $options{s} && $step > $max_step;
+# On patiente un peu (ou pas), selon l'option -d.
+                select undef, undef, undef, $delai;
+# Et on tape Entrée entre deux opérations si l'option -p est activée.
+                <STDIN> if $options{p};
+
+# Puis on passe à l'état suivant.
+                lecture $table[$l][$bout_ligne]{'newstate'};
+            }
+        }
+    }
+}
+
+
+
+
+sub exec_prog (;$) {
+# On remet tout à zéro pour éviter des effets de bord.
+    ($fichier) = @_;
+    undef %ruban;
+    undef @table;
+    $step = 1;
+    $tete = 0;
+    $ruban{'positif'}[$tete] = " ";
+
+# Détecter les fichiers inexistants.
+    if ($fichier) {
+        erreur("Fichier \"$fichier\" inexistant.") && next
+            unless -e $fichier;
+
+# Je récupère le fichier d'instructions.
+        open FICHIER, "<:utf8", $fichier
+            or erreur("Impossible de lire le fichier \"$fichier\".\n"
+                      . "Avez-vous les droits pour lire ce fichier ?",
+                      $fichier) && next;
+    } 
+
+# Je charge en mémoire la table des instructions.
+    my $i = 0;
+    my $j;
+    my $fragment;
+
+    while (<$input>) { 
+        chomp;
+        $i++;
+        $j = 0;
+
+# Ignorer les lignes blanches et les commentaires.
+        
+        next if /^\s*(?:\#.*)?$/;
+
+# Ignorer les commentaires embarqués dans des lignes de code (tout ce
+# qui suit un dièse, ou bien tout ce qui est entre /* */).
+            s@((\#.*$)|/\*.*\*/)@@g;
+
+            while (/((.*?[^\\]);|(.*?)(?:$|\n))/g) {
+            $j++;
+
+            $fragment = $1;
+            next if !$fragment;
+            
+# Analyser chaque ligne et remplir les champs correspondants.
+            if ($fragment =~/^\s*(\S+?):\s*        # state
+    (<\s*($caractere)?)?\s*              # read
+    (>\s*($caractere)?)?\s*              # write
+    ((->|<-)\s*(\d*))?\s*                # goto
+    :(\S+?)\s*(?:;|$)/x) {                     # newstate
+
+# Un mot précédé du début de ligne, de zéro ou plusieurs espaces, et
+# suivi de deux-points, est un état de machine.
+                $table[$i][$j]{'state'} = $1;
+
+# Un caractère, éventuellement vide, précédé de <, est un mot lu. 
+                if ($2) {
+# S'il est vide, alors il est égal à un espace sur le ruban.
+                    $table[$i][$j]{'read'} = $3 eq "" ? " " : $3; 
+# Et s'il est composé de deux caractères dont le premier est un
+# antislash, alors le deuxième est protégé.
+                    if ($table[$i][$j]{'read'} =~ /^\\(\S)$/) {
+                        $table[$i][$j]{'read'} = $1; 
+                    }
+                }
+
+# Un caractère, éventuellement vide, précédé de >, est un mot écrit. 
+                if ($4) {
+# S'il est vide, alors il est égal à un espace sur le ruban.
+                    $table[$i][$j]{'write'} = $5 eq "" ? " " : $5; 
+# Et s'il est composé de deux caractères dont le premier est un
+# antislash, alors le deuxième est protégé.
+                    if ($table[$i][$j]{'write'} =~ /^\\(\S)$/) {
+                        $table[$i][$j]{'write'} = $1; 
+                    }
+                }
+
+# Si un déplacement est spécifié
+                if ($6) {
+# Alors il est égal à 1 (par défaut), ou bien au nombre précisé.
+                    $table[$i][$j]{'goto'} = $8 eq "" ? 1 : $8;
+# Et si le déplacement a lieu vers la gauche, alors il est négatif.
+                    $table[$i][$j]{'goto'} *= -1 if $7 eq "<-"; 
+                }
+
+# Un mot terminant la ligne et précédé de deux-points est un changement
+# d'état.
+                $table[$i][$j]{'newstate'} = $9;
+            } 
+            else { 
+                erreur("Format de ligne invalide.", $fichier, $i, $j)
+                    && next; 
+            }
+        }
+    }
+    
+# Son analyse étant terminée, je n'ai plus besoin du fichier.    
+    if ($fichier) {
+        close(FICHIER) 
+            or erreur("Impossible de fermer le fichier \"$fichier\".", 
+                             $fichier) && next; 
+    }
+
+# Afficher le programme sous forme de table avec l'option -t.
+    prog_tableau && next if $options{t};
+
+# Régler le nombre de secondes entre deux instructions avec l'option -d.
+    $delai = $options{d} if $options{d};
+
+    $max_step = $options{s} if $options{s};
+
+
+################################################################
+# Tout ce qui suit concerne les programmes à exécuter.
+################################################################
+
+# D'abord, on vérifie qu'il n'y ait pas de changement d'état vers un
+# état inexistant (le seul toléré étant évidemment STOP). Pour cela, je
+# remplis une table des états, et une table des changements d'état.
+    my (@state, @newstate);
+    push @state, "STOP";
+
+    for (my $n = 1; $n <= $#table; $n++) {
+        for (my $o = 1; $o <= $#{$table[$n]}; $o++) {
+            if ($table[$n][$o]{'state'}) { 
+                push @state, $table[$n][$o]{'state'}; 
+            }
+            
+            if ($table[$n][$o]{'newstate'}) {
+                $newstate[$n][$o]{'newstate'} = $table[$n][$o]{'newstate'}; 
+            }
+        }
+    }
+
+# Et pour tout changement d'état, je vérifie que le nombre d'états
+# correspondant soit non nul.
+    for (my $m = 1; $m <= $#newstate; $m++) {
+        for (my $k = 1; $k <= $#{$newstate[$m]}; $k++) {
+            if ($newstate[$m][$k]{'newstate'}) {
+                avert("État \"$newstate[$m][$k]{'newstate'}\" inexistant.", 
+                      $fichier, $m) 
+                    unless grep /$newstate[$m][$k]{'newstate'}/, @state;
+            }
+        }
+    }
+# On remet tout à zéro, maintenant que l'on n'en a plus besoin.
+    undef @state;
+    undef @newstate;
+
+# Et on commence l'exécution du programme !
+    lecture "START"; 
+    affiche_ruban unless $options{t};
+}
+
+################################################################
+#
+# Programme principal
+#
+################################################################
+
+# Deux options spéciales : afficher la version...
+print "tmpl $version\n" if $options{v};
+# ... ou l'aide de tmpl.
+help if !($options{e} || $options{v})
+    && ($options{h} || $#ARGV < 0);
+
+
+# Linéariser une suite de caractères en un programme.
+if ($options{l}) {
+    $options{l} =~ s/\n/; /g;
+    my $p = 1;
+    my $linear;
+
+    print "START";
+    while ($options{l} =~ /(.)/g) {
+        if ($1 eq " ") { print ": > -> :" . ++$p . "; " . $p; }
+        else { print ": >\\$1 -> :" . ++$p . "; " . $p; }
+    }
+    print ": :STOP\n";
+}
+
+
+# Gérer aussi bien l'entrée par fichier que par STDIN (par exemple un pipe).
+$input = $options{e} ? "STDIN" : "FICHIER";
+
+if ($input eq "FICHIER") { 
+    foreach $fichier (@ARGV) { exec_prog($fichier); } }
+else { exec_prog(); }

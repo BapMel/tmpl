@@ -1,0 +1,10 @@
+#!/home/meles/bin/tmpl
+
+START:					:b
+b:		<0		->2		:b2
+b2: 		>1			:b	
+
+b:		<1		->2		:b3
+b3:			>0			:b
+
+b:		<	>0			:b

@@ -1,0 +1,26 @@
+#!/home/meles/bin/tmpl
+
+START:   	>H	->1 	:b2
+b2:			>H	->1		:b3
+b3:			>0	->2		:b4
+b4:			>0	<-2		:o
+
+o:		<1		->1		:o2
+o2:			>x	<-3		:o
+
+o:		<0				:q
+
+q:		<0		->2		:q
+q:		<1		->2		:q
+q:		<	>1	<-1		:p
+
+
+# TODO : > pour effacer case
+p:		<x	>	->1		:q
+
+p:		<H		->1		:f
+p:		<		<-2		:p
+
+f:		<0		->2		:f
+f:		<1		->2		:f
+f:		<	>0	<-2		:o

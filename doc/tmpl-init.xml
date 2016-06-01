@@ -1,0 +1,227 @@
+<html>
+
+<body>
+  <h1>Initiation au TMPL</h1>
+
+  <p>Le <strong>TMPL</strong> (<strong>Turing Machine Programming
+  Language</strong>, à prononcer comme le mot anglais <em>TeMPLe</em>)
+  est un langage de programmation simulant une machine de Turing. Cette
+  page est destinée à vous initier à son utilisation. </p>
+
+<p>
+Une machine de Turing, telle qu'elle est décrite dans l'article
+« Théorie des nombres calculables, suivie d'une application au problème
+de la décision » (XXXX réfces précises), est composée des éléments
+suivants :
+</p>
+
+<ul>
+  <li> un ruban ; </li>
+  <li> une tête de lecture ; </li>
+  <li> une tête d'écriture ; </li>
+  <li> des états. </li>
+</ul>
+
+<p> On peut effectuer exactement quatre opérations : </p>
+
+<ul>
+  <li> lire le symbole écrit sous la tête de lecture ; </li>
+  <li> écrire sur le ruban à l'emplacement actuel de la tête de
+    lecture ; </li> 
+  <li> modifier l'état de la machine ; </li>
+  <li> déplacer la tête de lecture. </li>
+</p>
+
+<p>
+Le langage TMPL contient une et une seule instruction pour chacune de
+ces actions, chaque instruction devant occuper une et une seule ligne.
+</p>
+
+
+<h2>Commentaire</h2>
+
+<p> Commençons tout de suite par une instruction qui ne se trouve pas dans
+la machine telle que Turing l'a décrite : les commentaires. Afin de
+rendre vos programmes plus ilsibles, vous pouvez en effet insérer des
+  remarques qui ne seront ni lues, ni exécutées. Pour cela, votre ligne
+  doit commencer par le caractère # (dièse). Exemple : </p>
+
+<pre>
+# Ceci est un commentaire ; il ne sera pas lu par notre machine de 
+# Turing.
+</pre>
+
+
+<h2>État de la machine</h2>
+
+<p>
+Chaque ligne doit commencer par la mention d'un état de la machine, qui
+est un nom quelconque, contenant un nombre quelconque de caractères
+alphanumériques, et dont la fin est marquée par le caractère
+deux-points. Exemples : </p>
+
+<pre>
+START:
+a:
+1729:
+abc123:
+</pre>
+
+<p>
+Parmi les noms d'état, un seul a un statut particulier, à savoir l'état
+START, qui désigne l'état initial du programme.
+</p>
+
+
+<h2>Changement d'état de la machine</h2>
+
+<p>
+Toute ligne du programme doit également se terminer par un changement
+d'état, chaîne alphanumérique quelconque <strong>commençant</strong> par
+le caractère deux-points. Exemples :
+</p>
+
+<pre>
+:STOP
+:abc123
+:1729
+:a
+</pre>
+
+<p>
+Un seul changement d'état a un statut particulier, à savoir STOP, qui
+indique à la machine de s'arrêter. Le plus court programme terminant est
+donc : 
+</p>
+
+<pre>
+# Programme vide, qui se termine instantanément.
+START: :STOP
+</pre>
+
+<p> <strong>Toute ligne du programme doit impérativement contenir un
+état et un changement d'état. </strong> Notez que les deux états ne sont
+pas nécessairement distincts : on peut donc parfaitement écrire des
+lignes récursives comme les suivantes : </p>
+
+<pre> 
+# Ces lignes sont vides et constituent des boucles infinies.
+abc123:  :abc123 
+START:   :START
+</pre>
+
+
+<h2>Écrire un symbole</h2>
+
+<p>
+Pour que notre machine écrive un symbole, notre instruction doit
+comporter, entre l'état et le changement d'état, le signe « &gt; »
+(« plus grand que ») suivi du caractère qui nous intéresse. Voici par
+exemple comment écrire exclusivement un 1 :
+</p>
+
+<pre>
+# Écrire 1 et terminer.
+START: 	  &gt;1    :STOP
+</pre>
+
+<p>
+Remarquons tout de suite que le nombre d'espaces n'est pas pris en
+compte par le langage TMPL. Les lignes suivantes sont donc
+rigoureusement équivalentes :
+</p>
+
+<pre>
+# Formulations équivalentes.
+START:        &gt;1       :STOP
+START: &gt;1 :STOP
+START: &gt; 1 :STOP
+</pre>
+
+<p>
+Il est souvent très utile d'exploiter cette possibilité ouverte par le
+langage, car vous vous apercevrez très rapidement que vos programmes
+gagneront en lisibilité. Les tabulations vous permettent en effet
+d'aligner verticalement toutes les instructions de même type.
+</p>
+
+
+<h2>Lire un caractère</h2>
+
+<p>
+Avant d'exécuter une ligne d'instructions, notre machine effectue deux
+vérifications : 
+</p>
+
+<ul>
+  <li> que son état soit bien celui qui est indiqué au début de la
+  ligne ; </li>
+  <li> qu'elle lise bien sous la tête de lecture le caractère qu'on lui
+  indique. </li>
+</ul>
+
+<p>
+Par exemple, prenons le programme suivant, qui écrit d'abord un 0, puis,
+s'il lit un 0 (ce qui, convenons-en, sera nécessairement le cas), écrit
+un 1 à la place :
+</p>
+
+<pre>
+# J'écris d'abord 0.
+START:         &gt;0   :boucle
+
+# Puis, si je suis dans l'état "boucle" ET que je lis 0, alors j'écris 1.
+boucle: &lt;0  &gt;1   :STOP 
+</pre>
+
+<p>
+On peut donc réaliser le programme infini suivant, qui remplace un 0
+par 1 et vice versa :
+</p>
+
+<pre>
+START:       &gt;0  :boucle
+boucle:  &lt;1  &gt;0  :boucle
+boucle:  &lt;0  &gt;1  :boucle
+</pre>
+
+<p>
+Si l'on suit le déroulement de ce programme, nous voyons qu'il exécute
+d'abord la ligne de l'état START, donc écrit 0. Il entre alors dans
+l'état « boucle », comme indiqué à la fin de la même ligne. Il va donc
+chercher si l'un des lignes correspondant à l'état « boucle » peut être
+exécutée. La deuxième ligne de notre programme ne remplit pas les
+conditions nécessaires, car elle ne peut être exécutée que si le
+programme lit le symbole 1 ; or, nous avons écrit, pour l'instant, le
+symbole 0. La ligne suivante, en revanche, peut être exécutée, car nous
+sommes bien dans l'état « boucle » et lisons bien le caractère 0. Nous
+pouvons donc, comme le veut la troisième ligne du programme, écrire le
+symbole 1. Ensuite, nous voyons que la deuxième ligne peut être
+exécutée, puis la troisième, puis la deuxième, etc. à l'infini. Notre
+machine écrira puis effacera des 0 et des 1 pour l'éternité.
+</p>
+
+
+<h2>Déplacer la tête</h2>
+
+<p>
+La dernière commande du langage TMPL permet de déplacer la tête de
+lecture et d'écriture. Pour cela, il faut taper une flèche, soit avec le
+signe « plus petit que » suivi d'un tiret (&lt;-), soit avec un tiret
+suivi du signe « plus grand que » (-&gt;), le tout étant suivi d'un
+nombre indiquant de combien de cases la tête doit se déplacer dans l'une
+ou l'autre direction. Exemples :
+</p>
+
+<pre>
+# Ce programme va écrire les chiffres 123 en commençant par le 2.
+START:  &gt;2   -&gt;1   :nb2
+nb2:    &gt;3   &lt;-2   :nb3
+nb3:    &gt;1            :STOP
+</pre>
+
+
+<h2></h2>
+
+</body>
+</html>
